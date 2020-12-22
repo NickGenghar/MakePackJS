@@ -1,0 +1,19 @@
+{
+  "name": "makepack",
+  "version": "1.0.0",
+  "description": "MakePack, a Node.js tool to quickly create, build and deploy Minecraft resource packs.",
+  "main": "makepack.js",
+  "scripts": {
+    "test": "node makepack.js"
+  },
+  "keywords": [
+    "makepack"
+  ],
+  "author": "Nick Genghar",
+  "license": "ISC",
+  "dependencies": {
+    "archiver": "^5.1.0",
+    "readline-sync": "^1.4.10",
+    "uuid": "^8.3.2"
+  }
+}
