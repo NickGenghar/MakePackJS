@@ -1,6 +1,7 @@
 const fs = require('fs');
 const readline = require('readline-sync');
 const uuid = require('uuid');
+const Zip = require('adm-zip');
 
 let errorCode = 0;
 
@@ -21,10 +22,16 @@ const errorHandler = () => {
         case(4): {
             console.log('An error occured during module creation.');
         } break;
-        case(9): {
+        case(10): {
             console.log('An error occured during manifest saving.');
         } break;
-        case(10): {} break;
+        case(11): {
+            console.log('An error occured during archive creation.');
+        } break;
+        case(12): {
+            console.log('An error occured during content retrieval for archiving.');
+        }
+        case(21): {} break;
         default: console.log('An unknown error has occured.');
     }
 
@@ -45,7 +52,15 @@ const workingDir = () => {
                 fs.accessSync(`${workDir}`);
             } catch {
                 errorCode = 1
-                console.log('Directory doesn\'t exist or invalid. Please specify a valid directory.');
+                if(readline.keyInYNStrict('Directory doesn\'t exist or invalid. Would you like to create the directory?\n')) {
+                    errorCode = 0;
+                    try {
+                        fs.mkdirSync(workDir);
+                    } catch {
+                        errorCode = 1;
+                        console.log('Failed to create the directory.');
+                    }
+                };
             }
         } else {
             errorCode = 1;
@@ -73,7 +88,8 @@ const modeSelect = () => {
     const menu = [
         'Create manifest.',
         'Export MCPACK.',
-        'Deploy pack for testing.'
+        'Deploy pack for testing.',
+        'Reselect working directory.'
     ]
     flag = readline.keyInSelect(menu, 'Choose Mode:\n');
     return flag;
@@ -218,7 +234,6 @@ const initModule = (manifest) => {
 
             do {
                 let opt = readline.keyInSelect(types, 'Module type:\n');
-                console.log(opt);
 
                 //if-else because we're in a loop and switch-case takes precedence for breaks.
                 if(opt == 0) {items['type'] = 'resources'; break;}
@@ -249,32 +264,70 @@ const initModule = (manifest) => {
     errorCode = 0;
 }
 
+const Create = (workDir) => {
+    const manifest = {}
+    initManifest(manifest);
+    initHeader(manifest);
+    initModule(manifest);
+
+    try {
+        if(workDir[-1] == '/') fs.writeFileSync(`${workDir}manifest.json`, JSON.stringify(manifest, {}, '\t'));
+        else fs.writeFileSync(`${workDir}/manifest.json`, JSON.stringify(manifest, {}, '\t'));
+
+        console.log('Manifest successfully generated.');
+    } catch {
+        errorCode = 10;
+        console.log('Error. Failed to create manifest at directory.');
+        if(!redo()) {
+            return;
+        } else {
+            Create(workDir);
+        }
+    }
+}
+
+const Export = (workDir) => {
+    let content;
+    try {
+        content = JSON.parse(fs.readFileSync(`${workDir}/manifest.json`)).header.name;
+        let zip = new Zip();
+        try {
+            zip.addLocalFolder(workDir);
+            zip.writeZip(`${workDir}/${content}.zip`);
+            console.log('Archive successfully created.');
+        } catch {
+            errorCode = 11;
+            console.log('Failed to create archive. Please specify a working directory to the correct directory.');
+        }
+    } catch {
+        errorCode = 12;
+        console.log('Error. Failed to obtain content of manifest.json within working directory. Please specify a working directory containing a valid manifest.json file.');
+    }
+}
+
+const Deploy = (workDir) => {
+    console.log('Coming soon...');
+    return;
+}
+
 (() => {
-    const workDir = workingDir();
+    let workDir = workingDir();
     let flag = true;
     do {
         let mode = modeSelect();
 
         switch(mode) {
             case(0): {
-                const manifest = {}
-                initManifest(manifest);
-                initHeader(manifest);
-                initModule(manifest);
-
-                try {
-                    if(workDir[-1] == '/') fs.writeFileSync(`${workDir}manifest.json`, JSON.stringify(manifest, {}, '\t'));
-                    else fs.writeFileSync(`${workDir}/manifest.json`, JSON.stringify(manifest, {}, '\t'));
-
-                    console.log('Manifest successfully generated.');
-                } catch {
-                    errorCode = 9;
-                    console.log('Error. Failed to create manifest at directory.');
-                    if(!redo()) {
-                        errorHandler();
-                        flag = false;
-                    }
-                }
+                Create(workDir);
+            } break;
+            case(1): {
+                Export(workDir);
+            } break;
+            case(2): {
+                Deploy(workDir);
+            } break;
+            case(3): {
+                workDir = workingDir();
             } break;
             default: {
                 if(!redo()) {
