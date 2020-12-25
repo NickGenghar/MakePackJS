@@ -1,4 +1,5 @@
-const fs = require('fs');
+const os = require('os');
+const fs = require('fs-extra');
 const readline = require('readline-sync');
 const uuid = require('uuid');
 const Zip = require('adm-zip');
@@ -11,7 +12,7 @@ const errorHandler = () => {
             console.log('No error occured throughout the process.');
         } break;
         case(1): {
-            console.log('An initialization error has occured during working directory selection.');
+            console.log('An error occured during initialization of working directory.');
         } break;
         case(2): {
             console.log('An error occured during format version selection.');
@@ -30,8 +31,22 @@ const errorHandler = () => {
         } break;
         case(12): {
             console.log('An error occured during content retrieval for archiving.');
-        }
-        case(21): {} break;
+        } break;
+        case(21): {
+            console.log('An error occured during Minecraft directory lookup.');
+        } break;
+        case(22): {
+            console.log('An error occured caused by Minecraft directory not exist.');
+        } break;
+        case(23): {
+            console.log('An error occured during pack type determining process.');
+        } break;
+        case(24): {
+            console.log('An error occured caused by pack already existed in Minecraft directory.');
+        } break;
+        case(25): {
+            console.log('An error occured during pack deployment.');
+        } break;
         default: console.log('An unknown error has occured.');
     }
 
@@ -264,12 +279,7 @@ const initModule = (manifest) => {
     errorCode = 0;
 }
 
-const Create = (workDir) => {
-    const manifest = {}
-    initManifest(manifest);
-    initHeader(manifest);
-    initModule(manifest);
-
+const buildManifest = (workDir, manifest) => {
     try {
         if(workDir[-1] == '/') fs.writeFileSync(`${workDir}manifest.json`, JSON.stringify(manifest, {}, '\t'));
         else fs.writeFileSync(`${workDir}/manifest.json`, JSON.stringify(manifest, {}, '\t'));
@@ -284,6 +294,14 @@ const Create = (workDir) => {
             Create(workDir);
         }
     }
+}
+
+const Create = (workDir) => {
+    const manifest = {}
+    initManifest(manifest);
+    initHeader(manifest);
+    initModule(manifest);
+    buildManifest(workDir, manifest);
 }
 
 const Export = (workDir) => {
@@ -305,8 +323,116 @@ const Export = (workDir) => {
     }
 }
 
+const getMinecraftDir = () => {
+    let user = os.homedir();
+    let deployDir;
+    switch(os.platform()) {
+        case('win32'): {
+            deployDir = `${user}/AppData/Local/Package/Microsoft.MinecraftUWP_8wekyb3d8bbwe/LocalState/games/com.mojang`
+        } break;
+        case('linux'): {
+            deployDir = `${user}/.local/share/mcpelauncher/games/com.mojang`
+        } break;
+        case('android'): {
+            deployDir = `/storage/emulated/0/games/com.mojang`
+        } break;
+        default: {
+            errorCode = 21;
+            console.log('Error. Failed to determine Minecraft directory. Your current platform may not be supported.');
+            return;
+        }
+    }
+
+    try{
+        fs.accessSync(deployDir);
+    } catch {
+        errorCode = 22;
+        console.log('Error. Minecraft directory doesn\'t exist. Please make sure you have installed Minecraft and the directory has been generated.');
+        return;
+    }
+
+    return deployDir;
+}
+
+const getPackTypeAndName = (workDir) => {
+    let retrieved = JSON.parse(fs.readFileSync(`${workDir}/manifest.json`));
+
+    let type, name = retrieved.header.name;
+    let moduleList = retrieved.modules;
+
+    if(moduleList.length > 1) {
+        let availableModules = [];
+        moduleList.forEach((i,n) => {
+            availableModules.push(`Module ${n}: ${i.type}`);
+        });
+
+        type = moduleList[readline.keyInSelect(availableModules, 'Multiple modules detected. Please select the desired deployment type.\n')].type;
+    } else type = moduleList[0].type;
+
+    switch(type) {
+        case('resources'): type = 'resource_packs'; break;
+        case('data'): type = 'behavior_packs'; break;
+        case('skin_pack'): type = 'skin_packs'; break;
+        default: {
+            errorCode = 23;
+            if(readline.keyInYNStrict('Error. Failed to determine pack type. Would you like to specify the type of the pack?')) {
+                type = getCustomPackType();
+            } else return;
+        }
+    }
+
+    return [type, name];
+}
+
+const getCustomPackType = () => {
+    const types = [
+        'Resource',
+        'Behavior',
+        'Skin Pack'
+    ];
+
+    const type = [
+        'resource_packs',
+        'behavior_packs',
+        'skin_packs'
+    ];
+
+    return type[readline.keyInSelect(types, 'Choose pack type:\n')];
+}
+
+const startDeployment = (workDir, deployDir, packType, packName) => {
+    try {
+        fs.accessSync(`${deployDir}/${packType}/${packName}`);
+        errorCode = 24;
+        if(readline.keyInYNStrict('Error. Pack exists in target directory. Delete?\n')) {
+            try {
+                fs.copySync(workDir, `${deployDir}/${packType}/${packName}`);
+                errorCode = 0;
+            } catch {
+                errorCode = 25;
+                console.log('Error. Failed to replace target pack.');
+                return;
+            }
+        }
+    } catch {
+        try {
+            fs.copySync(workDir, `${deployDir}/${packType}/${packName}`);
+        } catch(e) {
+            console.log(e);
+            errorCode = 25;
+            console.log('Error. Failed to deploy target pack.');
+            if(!redo()) {
+                return;
+            } else Deploy(workDir);
+        }
+    }
+}
+
 const Deploy = (workDir) => {
-    console.log('Coming soon...');
+    const deployDir = getMinecraftDir();
+    const packData = getPackTypeAndName(workDir);
+
+    startDeployment(workDir, deployDir, packData[0], packData[1]);
     return;
 }
 
